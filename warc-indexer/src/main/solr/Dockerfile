@@ -10,5 +10,9 @@ RUN chown -R solr /opt/solr/server/solr/webarchive
 ADD solr7 /tmp/solr/webarchive
 RUN chown -R solr /tmp/solr/webarchive
 
+# Add directory for mounting volume to backup/restore collection
+RUN mkdir /tmp/solr/backup
+RUN chown -R solr:solr /tmp/solr/backup
+
 USER solr
 
