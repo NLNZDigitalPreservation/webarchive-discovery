@@ -7,7 +7,7 @@ package uk.bl.wa.hadoop.mapreduce.hash;
  * #%L
  * warc-hadoop-recordreaders
  * %%
- * Copyright (C) 2013 - 2022 The webarchive-discovery project contributors
+ * Copyright (C) 2013 - 2023 The webarchive-discovery project contributors
  * %%
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -121,7 +121,7 @@ public class MessageDigestMapper extends Mapper<Path, BytesWritable, Text, Text>
         // Otherwise:
         try {
             byte[] digest = md.digest(); // Get once as reset after .digest()
-            Text name = new Text(current.getParent().toUri().getPath());
+            Text name = new Text(current.toUri().getPath());
             Text hex = new Text(new String(Hex.encodeHex(digest)) + " "
                     + bytes_seen + " " + current.toUri().getPath());
             log.debug("Got " + name + " " + hex + " from " + bytes_seen);

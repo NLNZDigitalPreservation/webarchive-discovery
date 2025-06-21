@@ -4,7 +4,7 @@ package uk.bl.wa.hadoop;
  * #%L
  * warc-hadoop-recordreaders
  * %%
- * Copyright (C) 2013 - 2022 The webarchive-discovery project contributors
+ * Copyright (C) 2013 - 2023 The webarchive-discovery project contributors
  * %%
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -190,7 +190,7 @@ public class ArchiveFileRecordReader<Key extends WritableComparable<?>, Value ex
         arcreader.setStrict(true);
         // Get the iterator:
         iterator = arcreader.iterator();
-        this.archiveName = paths[currentPath].getName();
+        this.archiveName = paths[currentPath].toString();
         return true;
     }
 

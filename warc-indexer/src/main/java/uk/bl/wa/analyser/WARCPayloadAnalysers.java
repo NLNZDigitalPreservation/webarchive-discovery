@@ -7,7 +7,7 @@ package uk.bl.wa.analyser;
  * #%L
  * warc-indexer
  * %%
- * Copyright (C) 2013 - 2022 The webarchive-discovery project contributors
+ * Copyright (C) 2013 - 2023 The webarchive-discovery project contributors
  * %%
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -128,7 +128,7 @@ public class WARCPayloadAnalysers {
      * @param header
      * @param content_length
      */
-    private void processContentType(SolrRecord solr, ArchiveRecordHeader header,
+    void processContentType(SolrRecord solr, ArchiveRecordHeader header,
             long content_length, boolean revisit) {
         // Get the current content-type:
         String contentType = (String) solr
@@ -157,11 +157,13 @@ public class WARCPayloadAnalysers {
         }
 
         // Allow header MIME
-        if (contentType != null && contentType.isEmpty()) {
+        if (contentType != null && (contentType.isEmpty() || "application/octet-stream".equals(contentType))) {
             if (header.getHeaderFieldKeys()
                     .contains("WARC-Identified-Payload-Type")) {
                 contentType = ((String) header.getHeaderFields()
                         .get("WARC-Identified-Payload-Type"));
+            } else if (solr.containsKey(SolrFields.CONTENT_TYPE_SERVED)) {
+                contentType = (String)solr.getFieldValue(SolrFields.CONTENT_TYPE_SERVED);
             } else {
                 contentType = header.getMimetype();
             }

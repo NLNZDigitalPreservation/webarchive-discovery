@@ -9,7 +9,7 @@ import static org.archive.format.warc.WARCConstants.HEADER_KEY_IP;
  * $Id:$
  * $HeadURL:$
  * %%
- * Copyright (C) 2013 - 2022 The webarchive-discovery project contributors
+ * Copyright (C) 2013 - 2023 The webarchive-discovery project contributors
  * %%
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -90,6 +90,7 @@ import uk.bl.wa.solr.SolrWebServer;
 import uk.bl.wa.util.InputStreamUtils;
 import uk.bl.wa.util.Instrument;
 import uk.bl.wa.util.Normalisation;
+import uk.bl.wa.util.RegexpReplacer;
 
 /**
  * 
@@ -181,9 +182,8 @@ public class WARCIndexer {
                 conf.getBoolean(HtmlFeatureParser.CONF_LINKS_NORMALISE) :
                 HtmlFeatureParser.DEFAULT_LINKS_NORMALISE;
         this.checkSolrForDuplicates = conf.getBoolean("warc.solr.check_solr_for_duplicates");
-        if (this.checkSolrForDuplicates == true) {
-            log.warn(
-                    "Checking Solr for duplicates is not implemented at present!");
+        if (this.checkSolrForDuplicates) {
+            log.warn("Checking Solr for duplicates is not implemented at present!");
         }
         // URLs to exclude:
         this.url_excludes = conf.getStringList( "warc.index.extract.url_exclude" );
@@ -313,11 +313,15 @@ public class WARCIndexer {
                 processARCHeader(solr);
             }
 
-            if( header.getUrl() == null )
+            if( header.getUrl() == null ) {
+                // e.g. warcinfo records:
+                log.error("Skipping "+header.getHeaderValue(HEADER_KEY_TYPE)+" as there is no URL.");
                 return null;
-
-            // Get the URL:
-            String targetUrl = Normalisation.sanitiseWARCHeaderValue(header.getUrl());
+            }
+            // Get the URL and ensure it conforms to the URL rules in the configuration
+            // This includes stripping the URL to a max length (default 2000)
+            String targetUrl = solrFactory.applyAdjustment(
+                    SolrFields.SOLR_URL, Normalisation.sanitiseWARCHeaderValue(header.getUrl()));
 
             // Strip down very long URLs to avoid
             // "org.apache.commons.httpclient.URIException: Created (escaped)
@@ -355,7 +359,7 @@ public class WARCIndexer {
             if( targetUrl.startsWith( "http" ) ) {
                 // TODO: Consider extracting & temporarily keeping all HTTP-header for later hinting on compression etc.
                 if( record instanceof WARCRecord ) {
-                    httpHeader = this.processWARCHTTPHeaders(record, header, targetUrl, solr);
+                    httpHeader = this.processWARCHTTPHeaders(archiveName, record, header, targetUrl, solr);
                 } else if( record instanceof ARCRecord ) {
                     ARCRecord arcr = ( ARCRecord ) record;
                     httpHeader = new HTTPHeader();
@@ -374,6 +378,8 @@ public class WARCIndexer {
                 // Skip recording non-content URLs (i.e. 2xx responses only please):
                 if(!checkResponseCode(httpHeader.getHttpStatus())) {
                     log.debug( "Skipping this record based on status code " + httpHeader.getHttpStatus() + ": " + targetUrl );
+                    Instrument.timeRel("WARCIndexerCommand.parseWarcFiles#fullarcprocess",
+                                       "WARCIndexerCommand.parseWarcFiles#solrdocDiscarding", start);
                     return null;
                 }
             } else {
@@ -511,13 +517,13 @@ public class WARCIndexer {
         solr.setField(SolrFields.SOURCE_FILE_PATH, linuxFilePath);
 
         byte[] url_md5digest = md5
-                .digest(Normalisation.sanitiseWARCHeaderValue(header.getUrl()).getBytes("UTF-8"));
+                .digest(Normalisation.sanitiseWARCHeaderValue(header.getUrl()).getBytes(StandardCharsets.UTF_8));
         // String url_base64 =
         // Base64.encodeBase64String(fullUrl.getBytes("UTF-8"));
         final String url_md5hex = Base64.encodeBase64String(url_md5digest);
         solr.setField(SolrFields.SOLR_URL, Normalisation.sanitiseWARCHeaderValue(header.getUrl()));
         if (addNormalisedURL) {
-            solr.setField( SolrFields.SOLR_URL_NORMALISED, Normalisation.canonicaliseURL(targetUrl) );
+            solr.setField( SolrFields.SOLR_URL_NORMALISED, Normalisation.canonicaliseURL(targetUrl)); // targetUrl has already been rewritten
         }
 
         // Get the length, but beware, this value also includes the HTTP headers (i.e. it is the payload_length):
@@ -555,9 +561,9 @@ public class WARCIndexer {
         // -----------------------------------------------------
         // Add user supplied Archive-It Solr fields and values:
         // -----------------------------------------------------
-        solr.setField(SolrFields.INSTITUTION, WARCIndexerCommand.institution );
-        solr.setField( SolrFields.COLLECTION, WARCIndexerCommand.collection );
-        solr.setField( SolrFields.COLLECTION_ID, WARCIndexerCommand.collection_id );
+        solr.setField(SolrFields.INSTITUTION, WARCIndexerCommand.opts.institution );
+        solr.setField( SolrFields.COLLECTION, WARCIndexerCommand.opts.collection );
+        solr.setField( SolrFields.COLLECTION_ID, WARCIndexerCommand.opts.collectionId );
     }
 
     /**
@@ -647,12 +653,24 @@ public class WARCIndexer {
      * @return {@link HTTPHeader} containing extracted HTTP status and headers for the record.
      */
     private HTTPHeader processWARCHTTPHeaders(
-            ArchiveRecord record, ArchiveRecordHeader warcHeader, String targetUrl, SolrRecord solr)
+            String archiveName, ArchiveRecord record, ArchiveRecordHeader warcHeader, String targetUrl, SolrRecord solr)
             throws IOException {
-        String statusCode = null;
-        // There are not always headers! The code should check first.
-        String statusLine = HttpParser.readLine(record, "UTF-8");
+        // There are not always headers!
         HTTPHeader httpHeaders = new HTTPHeader();
+        if (("" + warcHeader.getHeaderValue("WARC-Type")).equals("resource")) {
+            log.debug("Skipping HTTP header extraction as the record is a resource: '" + targetUrl + "'");
+            httpHeaders.setHttpStatus("200"); // Cheating a bit here for tool compatibility
+            return httpHeaders;
+        }
+
+        // FIXME Support HTTP Headers extraction for requests:
+        if (("" + warcHeader.getHeaderValue("WARC-Type")).equals("request")) {
+            log.debug("Skipping HTTP header extraction as the record is a request: '" + targetUrl + "'");
+            return httpHeaders;
+        }
+
+        String statusCode = null;
+        String statusLine = HttpParser.readLine(record, "UTF-8");
 
         if (statusLine != null && statusLine.startsWith("HTTP")) {
             String[] firstLine = statusLine.split(" ");
@@ -666,7 +684,7 @@ public class WARCIndexer {
                 } catch (ProtocolException p) {
                     log.error(
                             "ProtocolException [" + statusCode + "]: "
-                                    + warcHeader.getHeaderValue(WARCConstants.HEADER_KEY_FILENAME)
+                                    + archiveName
                                     + "@"
                                     + warcHeader.getHeaderValue(WARCConstants.ABSOLUTE_OFFSET_KEY),
                             p);
@@ -676,9 +694,10 @@ public class WARCIndexer {
             }
         } else {
             log.warn("Invalid status line: "
-                    + warcHeader.getHeaderValue(WARCConstants.HEADER_KEY_FILENAME)
+                    + archiveName
                     + "@"
-                    + warcHeader.getHeaderValue(WARCConstants.ABSOLUTE_OFFSET_KEY));
+                    + warcHeader.getHeaderValue(WARCConstants.ABSOLUTE_OFFSET_KEY)
+                    + " WARC-Type:" + warcHeader.getHeaderValue(HEADER_KEY_TYPE));
         }
         // No need for this, as the headers have already been read from the
         // InputStream (above):
@@ -838,6 +857,11 @@ public class WARCIndexer {
     }
 
     private boolean checkResponseCode( String statusCode ) {
+        // Allow all through if this is not set:
+        if( response_includes == null || response_includes.isEmpty() ) {
+            return true;
+        }
+        // Otherwise, do not allow things through with no status code:
         if( statusCode == null )
             return false;
         // Check for match:
@@ -851,6 +875,9 @@ public class WARCIndexer {
     }
 
     private boolean checkRecordType( String type ) {
+        if (record_type_includes.isEmpty()) {
+            return true;
+        }
         if (record_type_includes.contains(type)) {
                 return true;
         }

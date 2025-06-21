@@ -1,9 +1,26 @@
 
 **NOTE** Generally, we only add terms to the Solr schema, so it should usually be compatible with previous versions (i.e. clients should be able to query across both without modification). However, there are been a small number of fixes which unfortunately required breaking changes you may need to be aware of or work-around. e.g. [hash becomes single-valued](https://github.com/ukwa/webarchive-discovery/issues/95)... TBA...
 
+3.3.1
+-----
+
+source_file and source_file_path are again set correct as there were in version 3.2.0. 
+
+3.3.0
+-----
+
+* Upgrade to Apache Tika 2, which significantly changes metadata field naming and usage.
+* Upgraded Nanite to Apache Tika 2, and version 1.5.0-111.
+* Added support for JSONL output via a command-line option (`--output-format`) for local and Hadoop modes (`--jsonl`).
+* Moving from ElasticSearch to OpenSearch [#269](https://github.com/ukwa/webarchive-discovery/pull/269)
+* Add support for resource WARC records (produced by e.g. warcit) [#270](https://github.com/ukwa/webarchive-discovery/pull/270)
+* Host links validation [#283](https://github.com/ukwa/webarchive-discovery/pull/283)
+
 
 3.2.0
 -----
+
+(UNRELEASED)
 
 * Updated many dependencies, in particular Solr to 8.7.0.
 * Cut large, experimental packages out of the main build (NPL etc.) for now.

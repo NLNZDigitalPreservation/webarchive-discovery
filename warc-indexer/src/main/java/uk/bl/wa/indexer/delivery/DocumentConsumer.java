@@ -18,7 +18,7 @@ package uk.bl.wa.indexer.delivery;
  * #%L
  * warc-indexer
  * %%
- * Copyright (C) 2013 - 2022 The webarchive-discovery project contributors
+ * Copyright (C) 2013 - 2023 The webarchive-discovery project contributors
  * %%
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -43,7 +43,7 @@ import java.io.IOException;
 
 /**
  * Receives {@link uk.bl.wa.solr.SolrRecord}s, buffers them and sends them in batches to an implementation specific
- * destination such as the file system, Solr or Elasticsearch.
+ * destination such as the file system, Solr or Opensearch.
  */
 public interface DocumentConsumer extends Closeable {
     /**

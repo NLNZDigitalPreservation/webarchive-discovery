@@ -4,7 +4,7 @@ package uk.bl.wa.hadoop.indexer;
  * #%L
  * warc-hadoop-indexer
  * %%
- * Copyright (C) 2013 - 2022 The webarchive-discovery project contributors
+ * Copyright (C) 2013 - 2023 The webarchive-discovery project contributors
  * %%
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -23,9 +23,13 @@ package uk.bl.wa.hadoop.indexer;
  */
 
 import java.io.BufferedReader;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapred.JobClient;
@@ -66,9 +70,13 @@ public class WARCIndexerRunnerIntegrationTest extends MapReduceTestBaseClass {
         // Set up arguments for the job:
         // FIXME The input file could be written by this test.
         int reducers = 1;
-        String[] args = { "--dummy-run", "-w", "-S", "http://none", "-R",
-                ""
-                + reducers,
+        String[] args = { 
+                "--jsonl",
+                "--compress",
+                "--no-solr",
+                "-w", 
+                "-R",
+                Integer.toString(reducers),
                 "-i",
                 "src/test/resources/test-inputs.txt",
                 "-o", this.output.getName() };
@@ -90,18 +98,23 @@ public class WARCIndexerRunnerIntegrationTest extends MapReduceTestBaseClass {
                 output, new OutputLogFilter()));
         Assert.assertEquals(reducers, outputFiles.length);
         
-        // Check contents of the output:
+        // Get the output:
+        List<String> resultFiles = new ArrayList<String>();
         for( Path output : outputFiles ) {
             log.info(" --- output : "+output);
             if( getFileSystem().isFile(output) ) {
-                InputStream is = getFileSystem().open(output);
-                BufferedReader reader = new BufferedReader(new InputStreamReader(is));
-                String line = null;
-                while( ( line = reader.readLine()) != null ) {
-                    log.info(line);
-                    System.out.println(line);
+                String resultFile = "target/indexer-" + output.getName();
+                resultFiles.add(resultFile);
+                FileOutputStream out = new FileOutputStream(resultFile);
+                log.info(" --- output : " + output + " is being written to " + resultFile);
+                if (getFileSystem().isFile(output)) {
+                    InputStream is = getFileSystem().open(output);
+                    IOUtils.copy(is, out);
+                } else {
+                    log.info(" --- ...skipping directory...");
                 }
-                reader.close();
+                out.flush();
+                out.close();
             } else {
                 log.info(" --- ...skipping directory...");
             }

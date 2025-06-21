@@ -11,7 +11,7 @@ import static org.junit.Assert.assertTrue;
  * $Id:$
  * $HeadURL:$
  * %%
- * Copyright (C) 2013 - 2022 The webarchive-discovery project contributors
+ * Copyright (C) 2013 - 2023 The webarchive-discovery project contributors
  * %%
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -153,7 +153,7 @@ public class WARCIndexerTest {
         // Now URL excludes:
         String path = "warc.index.extract.response_include";
         List<String> response_includes = new ArrayList<String>();
-        this.testFilterBehaviour(path, response_includes, 36);
+        this.testFilterBehaviour(path, response_includes, 20);
         response_includes.add("2");
         this.testFilterBehaviour(path, response_includes, 29);
         response_includes.add("3");

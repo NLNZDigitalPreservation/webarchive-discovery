@@ -4,7 +4,7 @@ package uk.bl.wa.hadoop.indexer;
  * #%L
  * warc-hadoop-indexer
  * %%
- * Copyright (C) 2013 - 2022 The webarchive-discovery project contributors
+ * Copyright (C) 2013 - 2023 The webarchive-discovery project contributors
  * %%
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -49,6 +49,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 import picocli.CommandLine.ParseResult;
+import uk.bl.wa.Memento;
 import uk.bl.wa.solr.SolrFields;
 import uk.bl.wa.solr.SolrRecord;
 import uk.bl.wa.solr.SolrWebServer;
@@ -103,8 +104,10 @@ public class WARCIndexerReducer extends MapReduceBase implements
         new CommandLine(opts).parseArgs(args);
 
         // Decide between to-HDFS and to-SolrCloud indexing modes:
-        solrServer = new SolrWebServer(opts.solr).getSolrServer();
-
+        SolrOptions solrOpts = opts.solr;
+        if( solrOpts.service != null) {
+            solrServer = new SolrWebServer(solrOpts).getSolrServer();
+        }
         log.info("Initialisation complete.");
     }
 
@@ -133,14 +136,18 @@ public class WARCIndexerReducer extends MapReduceBase implements
             solr = wsr.getSolrRecord();
             noValues++;
 
-            if (!opts.dummyRun) {
+            if (solrServer != null && !opts.dummyRun) {
                 docs.add(solr.getSolrDocument());
                 // Have we exceeded the batchSize?
                 checkSubmission(docs, opts.solr.batchSize, reporter);
             } else {
-                log.info("DUMMY_RUN: Skipping addition of doc: "
+                log.debug("DUMMY_RUN: Skipping addition of doc: "
                         + solr.getField("id").getFirstValue());
                 reporter.incrCounter(MyCounters.NUM_DROPPED_RECORDS, 1);
+            }
+
+            if( opts.outputJSONL ) {
+                output.collect(new Text(solr.toMemento().toJSON()), null);
             }
 
             // Write out XML if requested:
@@ -149,8 +156,7 @@ public class WARCIndexerReducer extends MapReduceBase implements
                             SolrFields.SOLR_URL_TYPE) != null
                     && solr.getSolrDocument()
                             .getFieldValue(SolrFields.SOLR_URL_TYPE)
-                            .equals(
-SolrFields.SOLR_URL_TYPE_SLASHPAGE)) {
+                            .equals(SolrFields.SOLR_URL_TYPE_SLASHPAGE)) {
                 output.collect(
                         new Text(solr.getField("id")
                                 .toString()),
@@ -184,17 +190,19 @@ SolrFields.SOLR_URL_TYPE_SLASHPAGE)) {
 
     @Override
     public void close() {
-        try {
-            this.output.collect(new Text("NUM_RECORDS"), new Text("" + reporter
-                    .getCounter(MyCounters.NUM_RECORDS).getValue()));
-            this.output.collect(new Text("NUM_DROPPED_RECORDS"), new Text(
-                    "" + reporter
-                    .getCounter(MyCounters.NUM_DROPPED_RECORDS).getValue()));
-            this.output.collect(new Text("NUM_ERRORS"), new Text(""
-                    + reporter.getCounter(MyCounters.NUM_ERRORS).getValue()));
-        } catch (IOException e) {
-            log.error("ERROR on final stats output: " + e);
-            e.printStackTrace();
+        if( ! this.opts.outputJSONL ) {
+            try {
+                this.output.collect(new Text("NUM_RECORDS"), new Text("" + reporter
+                        .getCounter(MyCounters.NUM_RECORDS).getValue()));
+                this.output.collect(new Text("NUM_DROPPED_RECORDS"), new Text(
+                        "" + reporter
+                        .getCounter(MyCounters.NUM_DROPPED_RECORDS).getValue()));
+                this.output.collect(new Text("NUM_ERRORS"), new Text(""
+                        + reporter.getCounter(MyCounters.NUM_ERRORS).getValue()));
+            } catch (IOException e) {
+                log.error("ERROR on final stats output: " + e);
+                e.printStackTrace();
+            }
         }
     }
 
